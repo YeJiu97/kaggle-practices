@@ -1,0 +1,312 @@
+# load libraries
+library(GGally)
+
+# 读取数据
+model_data <- read.csv("features_prepare_for_modelling.csv")
+
+str(model_data)
+
+# 将非numeric变量转换为numeric变量
+# model_data$sex <- as.numeric(factor(model_data$sex))
+# model_data$cp <- as.numeric(factor(model_data$cp))
+# model_data$restwm <- as.numeric(factor(model_data$restwm))
+# model_data$target <- as.numeric(factor(model_data$target))
+
+
+
+# ggpairs_plot <- ggpairs(model_data[, c("age", "thalach", "oldpeak", "major_vessels")], tl.cex = 0.8)
+# ggpairs_plot + theme(axis.text = element_text(size = 8))
+
+
+# convert data type
+model_data$sex <- as.factor(model_data$sex)
+model_data$cp <- as.factor(model_data$cp)
+model_data$restwm <- as.factor(model_data$restwm)
+model_data$target <- as.factor(model_data$target)
+model_data$exang <- as.factor(model_data$exang)
+
+# structure
+str(model_data)
+
+
+###############
+# train_data 和 test_data
+library(caret)
+
+set.seed(123)  # 设置随机种子以确保结果可重现
+train_indices <- createDataPartition(model_data$target, p = 0.7, list = FALSE)
+train_data <- model_data[train_indices, ]
+test_data <- model_data[-train_indices, ]
+
+
+
+
+#######################
+# 朴素贝叶斯
+library(e1071)
+# 创建朴素贝叶斯模型
+naive_model_01 <- naiveBayes(target ~ ., data = train_data)
+naive_model_02 <- naiveBayes(target ~ ., data = train_data, laplace = 0)  # 无平滑
+naive_model_03 <- naiveBayes(target ~ ., data = train_data, laplace = 1)  # 默认平滑
+naive_model_04 <- naiveBayes(target ~ ., data = train_data, laplace = 0.5)  # 自定义平滑参数
+naive_model_05 <- naiveBayes(target ~ ., data = train_data, kernel = "linear")  # 使用线性核函数
+naive_model_06 <- naiveBayes(target ~ ., data = train_data, type = "raw")  # 使用原始频率而非概率
+
+
+# 定义函数用于评估模型性能
+evaluate_performance <- function(model, data) {
+  predictions <- predict(model, newdata = data)
+  
+  # 创建混淆矩阵对象
+  confusion_matrix <- caret::confusionMatrix(predictions, data$target)
+  
+  # 从混淆矩阵中提取性能指标
+  accuracy <- confusion_matrix$overall["Accuracy"]
+  precision <- confusion_matrix$byClass["Pos Pred Value"]
+  recall <- confusion_matrix$byClass["Sensitivity"]
+  f1_score <- confusion_matrix$byClass["F1"]
+  
+  # 打印性能指标
+  cat("Accuracy:", accuracy, "\n")
+  cat("Precision:", precision, "\n")
+  cat("Recall:", recall, "\n")
+  cat("F1 Score:", f1_score, "\n")
+}
+
+# 评估朴素贝叶斯模型的性能
+evaluate_performance(naive_model_01, test_data)
+evaluate_performance(naive_model_02, test_data)
+evaluate_performance(naive_model_03, test_data)
+evaluate_performance(naive_model_04, test_data)
+evaluate_performance(naive_model_05, test_data)
+evaluate_performance(naive_model_06, test_data)
+
+
+
+# Extract conditional probabilities from the model
+conditional_probs <- naive_model_01$tables
+
+# Display the conditional probabilities
+for (feature in names(conditional_probs)) {
+  cat("Feature:", feature, "\n")
+  print(conditional_probs[[feature]])
+  cat("\n")
+}
+
+
+
+###################################################
+# SVM
+# 定义要尝试的不同SVM模型的参数
+# 定义要尝试的不同SVM模型的参数
+svm_parameters <- data.frame(
+  kernel = c("linear", "polynomial", "radial"),
+  cost = c(0.1, 1, 10),
+  gamma = c(0.1, 1, 10)
+)
+
+# 创建和评估不同参数的SVM模型
+models <- list()  # 存储不同模型的列表
+model_results <- data.frame()  # 存储模型性能结果的数据框
+
+for (i in 1:nrow(svm_parameters)) {
+  # 创建SVM模型
+  svm_model <- svm(
+    target ~ .,
+    data = train_data,
+    kernel = svm_parameters[i, "kernel"],
+    cost = svm_parameters[i, "cost"],
+    gamma = svm_parameters[i, "gamma"]
+  )
+  
+  # 在测试集上进行预测
+  predictions <- predict(svm_model, newdata = test_data)
+  
+  # 计算性能指标
+  accuracy <- sum(predictions == test_data$target) / length(predictions)
+  precision <- confusionMatrix(predictions, test_data$target)$byClass["Precision"]
+  recall <- confusionMatrix(predictions, test_data$target)$byClass["Recall"]
+  f1_score <- confusionMatrix(predictions, test_data$target)$byClass["F1"]
+  
+  # 存储模型和性能指标
+  models[[i]] <- svm_model
+  model_results <- rbind(model_results, data.frame(
+    Model = paste("svm_model", i),
+    Accuracy = accuracy,
+    Precision = precision,
+    Recall = recall,
+    F1_Score = f1_score
+  ))
+}
+
+# 打印模型性能结果
+print(model_results)
+
+
+
+
+################ 过拟合测试
+# 创建独立验证集
+validation_indices <- createDataPartition(test_data$target, p = 0.5, list = FALSE)
+validation_data <- test_data[validation_indices, ]
+test_data <- test_data[-validation_indices, ]
+
+# 过拟合测试
+overfitting_results <- data.frame()  # 存储过拟合测试结果的数据框
+
+for (i in 1:length(models)) {
+  # 在训练数据上进行预测
+  train_predictions <- predict(models[[i]], newdata = train_data)
+  
+  # 在独立验证数据上进行预测
+  validation_predictions <- predict(models[[i]], newdata = validation_data)
+  
+  # 计算训练数据上的性能指标
+  train_accuracy <- sum(train_predictions == train_data$target) / length(train_predictions)
+  train_precision <- confusionMatrix(train_predictions, train_data$target)$byClass["Precision"]
+  train_recall <- confusionMatrix(train_predictions, train_data$target)$byClass["Recall"]
+  train_f1_score <- confusionMatrix(train_predictions, train_data$target)$byClass["F1"]
+  
+  # 计算独立验证数据上的性能指标
+  validation_accuracy <- sum(validation_predictions == validation_data$target) / length(validation_predictions)
+  validation_precision <- confusionMatrix(validation_predictions, validation_data$target)$byClass["Precision"]
+  validation_recall <- confusionMatrix(validation_predictions, validation_data$target)$byClass["Recall"]
+  validation_f1_score <- confusionMatrix(validation_predictions, validation_data$target)$byClass["F1"]
+  
+  # 存储过拟合测试结果
+  overfitting_results <- rbind(overfitting_results, data.frame(
+    Model = paste("svm_model", i),
+    Train_Accuracy = train_accuracy,
+    Train_Precision = train_precision,
+    Train_Recall = train_recall,
+    Train_F1_Score = train_f1_score,
+    Validation_Accuracy = validation_accuracy,
+    Validation_Precision = validation_precision,
+    Validation_Recall = validation_recall,
+    Validation_F1_Score = validation_f1_score
+  ))
+}
+
+# 打印过拟合测试结果
+print(overfitting_results)
+print(models[[2]])
+# plot(target ~ ., data = train_data, model = models[[3]])
+
+
+
+
+
+
+
+######################
+# random forest
+# 对变量进行缩放
+# Convert factor variables to numeric
+
+library(randomForest)
+
+# Set random seed
+set.seed(123)
+
+# Create and evaluate random forest models
+rf_parameters <- data.frame(
+  ntree = c(100, 500, 1000),
+  mtry = c(2, 4, 6)
+)
+
+models <- list()
+model_results <- data.frame()
+
+for (i in 1:nrow(rf_parameters)) {
+  # Create random forest model
+  rf_model <- randomForest(
+    target ~ .,
+    data = train_data,
+    ntree = rf_parameters[i, "ntree"],
+    mtry = rf_parameters[i, "mtry"]
+  )
+  
+  # Make predictions on the test set
+  predictions <- predict(rf_model, newdata = test_data)
+  
+  # Calculate performance metrics
+  accuracy <- sum(predictions == test_data$target) / length(predictions)
+  precision <- confusionMatrix(predictions, test_data$target)$byClass["Precision"]
+  recall <- confusionMatrix(predictions, test_data$target)$byClass["Recall"]
+  f1_score <- confusionMatrix(predictions, test_data$target)$byClass["F1"]
+  
+  # Store the model and performance metrics
+  models[[i]] <- rf_model
+  model_results <- rbind(model_results, data.frame(
+    Model = paste("rf_model", i),
+    Accuracy = accuracy,
+    Precision = precision,
+    Recall = recall,
+    F1_Score = f1_score
+  ))
+}
+
+# Print model performance results
+print(model_results)
+
+
+
+library(randomForest)
+
+# Set random seed
+set.seed(123)
+
+# Create and evaluate random forest models
+rf_parameters <- data.frame(
+  ntree = c(100, 500, 1000),
+  mtry = c(2, 4, 6)
+)
+
+models <- list()
+model_results <- data.frame()
+
+for (i in 1:nrow(rf_parameters)) {
+  # Create random forest model
+  rf_model <- randomForest(
+    target ~ .,
+    data = train_data,
+    ntree = rf_parameters[i, "ntree"],
+    mtry = rf_parameters[i, "mtry"]
+  )
+  
+  # Make predictions on the training set
+  train_predictions <- predict(rf_model, newdata = train_data)
+  
+  # Calculate performance metrics on the training set
+  train_accuracy <- sum(train_predictions == train_data$target) / length(train_predictions)
+  train_precision <- confusionMatrix(train_predictions, train_data$target)$byClass["Precision"]
+  train_recall <- confusionMatrix(train_predictions, train_data$target)$byClass["Recall"]
+  train_f1_score <- confusionMatrix(train_predictions, train_data$target)$byClass["F1"]
+  
+  # Make predictions on the test set
+  test_predictions <- predict(rf_model, newdata = test_data)
+  
+  # Calculate performance metrics on the test set
+  test_accuracy <- sum(test_predictions == test_data$target) / length(test_predictions)
+  test_precision <- confusionMatrix(test_predictions, test_data$target)$byClass["Precision"]
+  test_recall <- confusionMatrix(test_predictions, test_data$target)$byClass["Recall"]
+  test_f1_score <- confusionMatrix(test_predictions, test_data$target)$byClass["F1"]
+  
+  # Store the model and performance metrics
+  models[[i]] <- rf_model
+  model_results <- rbind(model_results, data.frame(
+    Model = paste("rf_model", i),
+    Train_Accuracy = train_accuracy,
+    Train_Precision = train_precision,
+    Train_Recall = train_recall,
+    Train_F1_Score = train_f1_score,
+    Test_Accuracy = test_accuracy,
+    Test_Precision = test_precision,
+    Test_Recall = test_recall,
+    Test_F1_Score = test_f1_score
+  ))
+}
+
+# Print model performance results
+print(model_results)
+

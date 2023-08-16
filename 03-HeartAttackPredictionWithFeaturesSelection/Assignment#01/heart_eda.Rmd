@@ -1,0 +1,394 @@
+---
+title: "Heart diseases feature selection and exploratory data analysis"
+author: "Wangjun Shen"
+output:
+  word_document: default
+  html_notebook: default
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+# Introduction
+
+The objective of this assignment is to prepare a data set that can be used to predict heart disease, a common and serious health issue that affects a significant portion of the population. The data set we will be working on is a subset of a larger real-world data set collected by multiple healthcare institutions. It contains various attributes related to patients' health, such as age, gender, blood pressure, and other clinical measurements. These attributes can be leveraged to predict the presence of heart disease.
+
+Data mining plays a critical role in addressing challenges related to predicting disease spread and similar healthcare problems. By analyzing large and complex data sets, we can identify patterns and relationships that may not be immediately apparent. This, in turn, allows us to develop more accurate predictive models. In the context of heart disease, data mining techniques can help us extract insights and patterns from patient data. These insights can aid in identifying risk factors, predicting disease outcomes, and developing effective treatment strategies.
+
+For example, by using data mining techniques on the given data set, we can identify the most important predictors of heart disease. This knowledge can then be used to develop a classification model that accurately predicts the presence of the disease in patients. Moreover, data mining can also help us identify subpopulations that are more susceptible to the disease. We can then develop tailored prevention and treatment strategies for these subpopulations.
+
+Overall, this assignment provides an opportunity to apply data mining techniques to a real-world data set. It also allows us to gain hands-on experience with feature engineering, data exploration, and predictive modeling. The insights gained from this exploration can inform our work in subsequent assignments. This, in turn, can help us develop more accurate and effective predictive models for heart disease and other similar health challenges.
+
+# Related Work
+
+---
+
+# Data exploration
+
+## Features Selection
+
+The details of the original data set are as follows.
+
+| Variable      | Description                                                                                                                                                                                                                    | Type        |
+|------------------------|------------------------|------------------------|
+| id            | A unique ID that identifies a participant in the study                                                                                                                                                                         | Numerical   |
+| age           | Age in years                                                                                                                                                                                                                   | Numerical   |
+| sex           | Male and Female were recorded                                                                                                                                                                                                  | Categorical |
+| cp            | Chest Pain type: typical angina; atypical angina; non-anginal pain; and asymptomatic                                                                                                                                           | Categorical |
+| trestbps      | Resting blood pressure (in mm Hg on admission to the hospital)                                                                                                                                                                 | Numerical   |
+| chol          | Serum Cholestoral in mg/dl                                                                                                                                                                                                     | Numerical   |
+| fbs           | Fasting blood sugar \> 120 mg/dl (True or False)                                                                                                                                                                               | Boolean     |
+| restecg       | Resting electrocardiographic results: normal; having ST-T wave abnormality (T wave inversions and/or ST elevation or depression of \> 0.05 mV) or showing probable or definite left ventricular hypertrophy by Estes' criteria | Categorical |
+| thalach       | Maximum heart rate achieved                                                                                                                                                                                                    | Numerical   |
+| exang         | Exercise induced angina (True/False)                                                                                                                                                                                           | Boolean     |
+| oldpeak       | ST depression induced by exercise relative to rest                                                                                                                                                                             | Numerical   |
+| slope         | The slope of the peak exercise ST segment: upsloping; flat; downsloping                                                                                                                                                        | Categorical |
+| major_vessels | Number of major vessels (0-3) colored by flourosopy                                                                                                                                                                            | Numerical   |
+| restwm        | Rest wall motion abnormality: none; mild or moderate; moderate or severe; akinesis or dyskmem                                                                                                                                  | Categorical |
+| target        | Heart disease diagnosed (disease/no disease)                                                                                                                                                                                   | Categorical |
+
+Import the data set and view.
+
+```{r}
+# load data set first
+heart.full <- read.csv("heart.csv")
+
+# then check the data set
+str(heart.full)
+
+```
+
+From the output results, it can be found that the data set contains 15 variables and 1025 observation. The details of each variable are consistent with the description.
+
+Then check the distribution of missing values in the data set.
+
+```{r}
+
+sum(is.na(heart.full))
+
+```
+
+There are not missing values in this data.
+
+注意：这里删除关于corr 的内容，转移到后面。
+
+In the following section, we will discuss the importance of features, specifically the correlation between variables. To measure this correlation, we will use random forest to calculate Gini Importance or Mean Decrease in Impurity (MDI). This method determines the importance of each feature by summing the number of splits (across all trees) that include the feature, proportionally to the number of samples it splits.
+
+
+The data set is undergoing a transformation from its original data types to appropriate data types required for analysis. Originally, the variables age, trestbps, chol, thalach, and oldpeak were imported as character vectors representing age, resting blood pressure, serum cholesterol, maximum heart rate achieved, and ST depression induced by exercise relative to rest, respectively. These variables have been converted to a numeric data type since they represent numerical measurements. Similarly, the variables sex, cp, restecg, slope, restwm, and target were originally imported as character vectors representing sex, chest pain type, resting electrocardiographic results, slope of the peak exercise ST segment, presence of a major vessels colored by fluoroscopy, and heart disease status, respectively. These variables have been converted to factor data type since they represent categorical variables. This transformation allows for easier data manipulation and analysis, especially when exploring relationships between variables.
+
+```{r}
+
+# convert age, trestbps, chol, thalach, and oldpeak to numeric
+heart.full$age <- as.numeric(heart.full$age)
+heart.full$trestbps <- as.numeric(heart.full$trestbps)
+heart.full$chol <- as.numeric(heart.full$chol)
+heart.full$thalach <- as.numeric(heart.full$thalach)
+heart.full$oldpeak <- as.numeric(heart.full$oldpeak)
+
+
+# convert sex, cp, restecg, slope, restwm, and target to factor
+heart.full$sex <- as.factor(heart.full$sex)
+heart.full$cp <- as.factor(heart.full$cp)
+heart.full$restecg <- as.factor(heart.full$restecg)
+heart.full$slope <- as.factor(heart.full$slope)
+heart.full$restwm <- as.factor(heart.full$restwm)
+heart.full$target <- as.factor(heart.full$target)
+
+```
+
+
+根据上面的结果，我们不认为这几个变量某一个能够代表另一个，最大值也仅仅是-0.39，稍微扩写一下。
+
+
+For ease of observation, we visualize the correlation.
+
+```{r gg-oz-gapminder, fig.cap = "Visualization of correlation matrix"}
+
+library(corrplot)
+
+corrplot(cor.matrix, method = "color")
+
+```
+
+The resulting plot will show the correlations between variables using different colors, where red indicates strong negative correlation, blue indicates strong positive correlation, and white indicates no correlation. The strength of the correlation is determined by the absolute value of the correlation coefficient, with values closer to 1 indicating stronger correlation.
+
+Then use random forest to detect the importance of each feature. In order to understand whether these features differ between genders, the data will firstly be created based on the sub-dataset.
+
+```{r}
+
+# data set for each gender
+heart.male <- subset(heart.full, sex == "male")
+heart.female <- subset(heart.full, sex == "female")
+
+```
+
+
+Then use those two sub datasets to build the random forest:
+```{r}
+# Random forest for male subset
+library(randomForest)
+set.seed(123)
+rf_model_male <- randomForest(target ~ ., data = heart.male, importance = TRUE, ntree = 500)
+importance(rf_model_male)
+
+```
+
+
+Based on the provided correlation matrix, the following features appear to be the most important in predicting the presence of heart disease:
+
+- cp (chest pain type)
+- thalach (maximum heart rate achieved)
+- major_vessels (number of major vessels colored by fluoroscopy)
+- oldpeak (ST depression induced by exercise relative to rest)
+- trestbps (resting blood pressure)
+- age
+
+These features have the highest correlation with the target variable (disease/no disease), as well as high values for MeanDecreaseAccuracy and MeanDecreaseGini, indicating that they are important predictors for a machine learning model.
+
+Chest pain type (cp) has high values for both MeanDecreaseAccuracy and MeanDecreaseGini, suggesting that it is a strong predictor for heart disease. Maximum heart rate achieved (thalach) and the number of major vessels colored by fluoroscopy (major_vessels) also have high correlations and values for MeanDecreaseAccuracy and MeanDecreaseGini, making them strong predictors as well. ST depression induced by exercise relative to rest (oldpeak) and resting blood pressure (trestbps) have lower correlations but still have high values for MeanDecreaseAccuracy and MeanDecreaseGini, indicating that they are important features in predicting the presence of heart disease. Finally, age is also an important feature as it has a moderate correlation with the target variable and a relatively high value for MeanDecreaseAccuracy.
+
+Overall, these six features can be considered the most important for predicting the presence of heart disease for male in this dataset.
+
+Visualization.
+
+```{r}
+varImpPlot(rf_model_male, col = "red", pch = 20)
+```
+
+
+```{r}
+
+# Random forest for female subset
+set.seed(123)
+rf_model_female <- randomForest(target ~ ., data = heart.female, importance = TRUE, ntree = 500)
+importance(rf_model_female)
+
+```
+
+Based on the provided correlation matrix, the important features that can be selected are:
+
+- Age: It has a high correlation with both disease and no disease, and also has high values for MeanDecreaseAccuracy and MeanDecreaseGini.
+
+- cp (Chest pain type): It has a moderate correlation with disease and no disease, and has high values for MeanDecreaseAccuracy and MeanDecreaseGini.
+
+- thalach (Maximum heart rate achieved): It has a moderate correlation with disease and no disease, and has high values for MeanDecreaseAccuracy and MeanDecreaseGini.
+
+- oldpeak (ST depression induced by exercise relative to rest): It has a moderate correlation with disease and no disease, and has a high value for MeanDecreaseAccuracy.
+
+- major_vessels (Number of major vessels (0-3) colored by flourosopy): It has a moderate correlation with disease and no disease, and has high values for MeanDecreaseAccuracy and MeanDecreaseGini.
+
+- restwm (resting wall motion abnormalities): It has a moderate correlation with disease and no disease, and has high values for MeanDecreaseAccuracy and MeanDecreaseGini.
+
+- exang (exercise-induced angina): It has a moderate correlation with both disease and no disease, and has a high value for MeanDecreaseGini.
+
+The features "trestbps", "chol", "fbs", and "restecg" have moderate correlations with disease and no disease, but have relatively lower values for MeanDecreaseAccuracy and MeanDecreaseGini, so they are not included in the list of important features.
+
+Overall, these seven features can be considered the most important for predicting the presence of heart disease for female in this dataset.
+
+
+Visualization.
+
+```{r}
+varImpPlot(rf_model_female, col = "red", pch = 20)
+
+```
+
+
+Therefore, comprehensive consideration, the features that will be retained are: age, cp, thalach, oldpeak, major_vessels, restwm, exang and sex.
+
+Now create a new data set with those selected features.
+
+```{r}
+
+# Create new dataset with selected features and target variable
+heart_features_selected <- heart.full[, c("id", "age", "sex", "cp", "thalach", "exang", "oldpeak", "major_vessels", "restwm", "target")]
+
+# Save new dataset as CSV file
+write.csv(heart_features_selected, "heart_features_selected.csv", row.names = FALSE)
+```
+
+
+
+## Descriptive Statistics
+
+Import the new data set and check the details of that new data set:
+
+```{r}
+heart.selected <- read.csv("heart_features_selected.csv")
+
+str(heart.selected)
+
+```
+
+Summarize the selected data set: 
+
+```{r}
+library(tidyverse)
+
+
+heart.selected$id <- as.numeric(heart.selected$id)
+heart.selected$age <- as.numeric(heart.selected$age)
+heart.selected$sex <- as.factor(heart.selected$sex)
+heart.selected$cp <- as.factor(heart.selected$cp)
+heart.selected$thalach <- as.numeric(heart.selected$thalach)
+heart.selected$oldpeak <- as.numeric(heart.selected$oldpeak)
+heart.selected$major_vessels <- as.numeric(heart.selected$major_vessels)
+heart.selected$target <- as.factor(heart.selected$target)
+
+
+summary(heart.selected[, -1])
+
+```
+
+
+
+
+
+```{r}
+library(psych)
+
+describe(heart.selected[, -1])
+
+```
+
+
+**首先对年龄进行探索**
+
+```{r}
+
+hist(heart.selected$age[heart.selected$sex == "male"])
+
+```
+
+对于male的年龄而言，基本上是对称的，或者可以认为略微的有些左偏态分布。
+
+
+
+```{r}
+hist(heart.selected$age[heart.selected$sex == "female"]) + 
+```
+
+female的age相较于male的年龄分布而言，更加的左偏态分布，可以发现female在70以上的数量比male要多。
+
+```{r}
+
+
+boxplot(heart.selected$age ~ heart.selected$target,
+        main="Heart disease diagnosis distribution by Age",
+         ylab="Age",xlab="Heart disease diagnosed")
+
+```
+
+No disease的年龄median比disease的要高，而range则相对更小，no disease包含了一个outlier，但是不是extreme outlier，所以这个数据可以被保留而不是删除。
+
+
+```{r}
+
+
+ggplot(heart.selected, aes(x = target, y = age, fill = sex)) +
+  geom_boxplot() +
+  labs(title = "Heart disease diagnosis distribution by Age and Gender",
+       x = "Heart disease diagnosed",
+       y = "Age") +
+  scale_fill_discrete(name = "Sex",
+                      labels = c("Female", "Male")) +
+  theme_minimal()
+
+
+```
+
+
+
+
+
+```{r}
+
+ggplot(data = heart.selected, aes(x = target, fill = cp)) + 
+  geom_bar(position = "fill") +
+  labs(title = "Heart disease diagnosis Distributions by Chest pain",
+       x = "Heart disease diagnosis",
+       y = "chest pain") +
+  theme_test()
+
+
+```
+
+cp一共有四种情况，在disease和no disease中的占比存在着区别。对于disease而言，有着non-anginal pain有着最高的占比，接着是atypical angina，而asymptomatic的占比则最小。
+
+对于no disease而言，typical angina有着最高的占比，而且显著的高于了在disease上的占比，其他的三种情况的占比都不大。
+
+
+```{r}
+
+# Create barplot by chest pain and gender
+ggplot(heart.selected, aes(x = target, fill = cp)) +
+  geom_bar(position = "fill") +
+  facet_wrap(~sex) +
+  labs(title = "Heart disease diagnosis Distributions by Chest pain",
+       x = "Heart disease diagnosis",
+       y = "chest pain") +
+  scale_fill_discrete(name = "Chest Pain") +
+  theme_test()
+
+```
+
+上图展示了四种cp在不同性别之下的情况，从结果来看，与总体是基本上是一致的。
+
+由此我们可以认为，在进行分类的时候，无论性别，如果被观测者有着typical angina，那么他更容易被分到no disease。
+
+
+```{r}
+
+mosaicplot(heart.selected$sex ~ heart.selected$target,
+           main="Heart disease outcome by Gender", shade=FALSE,color=TRUE,
+           xlab="Gender", ylab="Heart disease")
+
+```
+从上图来看，对于female而言，disease的占比较高，而male的disease则占比较低。
+
+由此我们可以推论，如果被观测者是female，那么她被分类到disease的可能性就更高。
+
+```{r}
+
+boxplot(heart.selected$thalach ~ heart.selected$target,
+        main="Heart disease diagnosis distribution by Thalach",
+         ylab="Thalach",xlab="Heart disease diagnosed")
+
+
+```
+
+
+从上图可以发现，disease的thalach总体上比no disease更高，这与常识相符合。
+
+另外，thalach在disease上的outliers更多。由此可以认为，在一个人thalach的值相对较高的情况之下，这个人出现disease的可能性会更高，在分类的时候更容易被分类到disease类。
+
+
+总体上来讲，没有哪一个变量能够做出非常准确的预测，所以在进行分类的时候，需要combine所有的变量。
+
+
+
+## corr
+
+```{r}
+# calculate the correlation matrix
+# if convert to factor
+
+
+heart.selected$age <- as.numeric(heart.selected$age)
+heart.selected$thalach <- as.numeric(heart.selected$thalach)
+heart.selected$oldpeak <- as.numeric(heart.selected$oldpeak)
+heart.selected$major_vessels <- as.numeric(heart.selected$major_vessels)
+
+
+cor.matrix <- cor(heart.selected[, c("age",  "thalach", "oldpeak", "major_vessels")])
+cor.matrix
+```
+
+```{r}
+
+corrplot(cor.matrix)
+
+
+```
+
